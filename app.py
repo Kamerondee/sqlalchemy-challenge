@@ -27,15 +27,13 @@ app = Flask(__name__)
 def welcome():
     """List all available api routes."""
     return (
-        f"Welcome to the SQL-Alchemy APP API!<br/>"
-        f"Available Routes:<br/>"
-        f"/api/v1.0/precipitation<br/>"
-        f"/api/v1.0/stations<br/>"
-        f"/api/v1.0/tobs<br/>"
-        f"/api/v1.0/[start_date format:yyyy-mm-dd]<br/>"
-        f"/api/v1.0/[start_date format:yyyy-mm-dd]/[end_date format:yyyy-mm-dd]<br/>"
+        f"Hawaii Weather Data Routes:<br/><br>"
+        f"-- Precipiation Totals: <a href=\"/api/v1.0/precipitation\">/api/v1.0/precipitation<a><br/>"
+        f"-- Active Weather Stations: <a href=\"/api/v1.0/stations\">/api/v1.0/stations<a><br/>"
+        f"-- Station USC00519281 Temperature Observation: <a href=\"/api/v1.0/tobs\">/api/v1.0/tobs<a><br/>"
+        f"-- Min, Average & Max Temperatures for Date Range: /api/v1.0/trip/yyyy-mm-dd/yyyy-mm-dd<br>"
+        f"NOTE: If no end-date is provided, the trip api calculates stats through 08/23/17<br>"
     )
-
 
 @app.route("/api/v1.0/precipitation")
 def precipitation():
@@ -45,6 +43,66 @@ def precipitation():
     """Return a list of all Precipitation Data"""
     # Query all Precipitation data
     results = session.query(measurement.date, measurement.prcp).filter(measurement.date >= "2016-08-24").all()
-
     session.close()
+
+    # JSON the information
+    json_data = []
+    for date, prcp in data:
+        new_dict = {"date": date, "prcp": prcp}
+        json_data.append(new_dict)
+        # Return the dates and prcp
+    return jsonify(json_data)
+
+@app.route("/api/v1.0/stations")
+def stations():
+    # Create new session for stations
+    session = Session(engine)
+    data = session.query(station.name, station.longitude, station.latitude, station.elevation).all()
+    session.close()
+
+   # JSON the information
+    json_data = []
+    for name, longitude, latitude, elevation in data:
+        new_dict = {"name": name, "longitude": longitude, "latitude": latitude, "elevation": elevation}
+        json_data.append(new_dict)
+        # Return the station data
+    return jsonify(json_data)
+
+@app.route("/api/v1.0/tobs")
+def tobs():
+   # Create a new session for tobs
+    session = Session(engine)
+    data = session.query(Station.station, Measurement.date, Measurement.tobs).\
+        filter(Measurement.date >= '2016-08-23').where(Station.id == 7).all()
+    session.close()
+
+    # JSON the information
+    json_data = []
+    for name, date, tobs in data:
+        new_dict = {"name": name, "date": date, "temperature": tobs}
+        json_data.append(new_dict)
+       # Return tobs data
+    return jsonify(json_data)
+
+@app.route("/api/v1.0/<start>")
+def start_temp(start):
+    # Find non-existing end dates and then proceed with a new session
+    session = Session(engine)
+    df = pd.DataFrame(session.query(measurement.date))
+    df.columns = ["date"]
+    # Start loop
+    if start in df["date"].tolist():
+        data = session.query(func.min(Measurement.tobs), func.avg(Measurement.tobs)\
+                             , func.max(Measurement.tobs)).filter(Measurement.date >= start).all()
+        session.close()
+        json_data = []
+        for x, y, z in data:
+            new_dict = {"units": "fahrenheit", "min": x, "avg": y, "max": z}
+            json_data.append(new_dict)
+        return jsonify(json_data)
+    session.close()
+    # Return non-existing
+    return jsonify({"error": f"Date: {start} not found."}), 404
+
+
 
